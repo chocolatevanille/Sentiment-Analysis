@@ -1,4 +1,3 @@
 # Ignore the .env file
 .env
-main.ipynb
 main-checkpoint*
