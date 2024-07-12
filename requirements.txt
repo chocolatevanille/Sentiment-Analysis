@@ -10,4 +10,6 @@ librosa
 Flask
 python-dotenv
 nltk
+tensorflow
+keras
 # re # uncomment if your python version does not have re built-in
