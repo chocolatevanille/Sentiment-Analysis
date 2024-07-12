@@ -1,0 +1,13 @@
+torch==2.3.1
+torchvision
+transformers
+pandas
+numpy
+scikit-learn
+nltk
+Pillow
+librosa
+Flask
+python-dotenv
+nltk
+re
