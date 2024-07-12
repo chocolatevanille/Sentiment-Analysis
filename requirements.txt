@@ -10,4 +10,4 @@ librosa
 Flask
 python-dotenv
 nltk
-re
+# re # uncomment if your python version does not have re built-in
