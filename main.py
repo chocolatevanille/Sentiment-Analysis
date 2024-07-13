@@ -21,17 +21,20 @@ gui.theme("DarkBlue")
 def display_credits():
     layout = [
         [gui.Text("Made by Noël Barron",justification='center')],
+        [gui.Button('GitHub',enable_events=True,key='-GITHUB-')],
         [gui.Text("AI model trained on Amazon Review Data (2018)",justification='left')],
-        [gui.Text("Ni, J., Li, J., & McAuley, J. (n.d.). Justifying recommendations using distantly-labeled reviews and fined-grained aspects. Empirical Methods in Natural Language Processing (EMNLP), 2019",justification='left')],
-        [gui.Column([[gui.Button('GitHub',enable_events=True,key='-GITHUB-')]],
-        justification='center')]
+        [gui.Text("Ni, J., Li, J., & McAuley, J. (n.d.). \"Justifying recommendations using distantly-labeled reviews and fined-grained aspects.\" Empirical Methods in Natural Language Processing (EMNLP), 2019",justification='left')],
+        [gui.Button('Training Data',enable_events=True,key='-DATA-')]
     ]
     window = gui.Window("Credits", layout, modal=True)
-    url = 'https://github.com/chocolatevanille/Sentiment-Analysis'
+    github_url = 'https://github.com/chocolatevanille/Sentiment-Analysis'
+    data_url = 'https://nijianmo.github.io/amazon/index.html'
     while True:
         event, values = window.read()
         if event == '-GITHUB-':
-            webbrowser.open(url)
+            webbrowser.open(github_url)
+        if event == '-DATA-':
+            webbrowser.open(data_url)
         elif event == gui.WIN_CLOSED:
             window.close()
             return None
@@ -40,19 +43,17 @@ def display_credits():
 # called when the About button is pressed
 def display_about():
     layout = [
+        [gui.Text("Process",justification='center',font=("Open Sans", 14))],
+        [gui.Text("Uses YouTube API to pull top 100 highest voted comments (500 if operating on CUDA-enabled GPU)",justification='left')],
+        [gui.Text("Runs them through a trained AI model that determines text sentiment",justification='left')],
         [gui.Text("AI Information",justification='center',font=("Open Sans", 14))],
         [gui.Text("This AI was trained on Amazon movie and TV reviews",justification='left')],
-        [gui.Text("The results are not guaranteed to be accurate",justification='left')],
-        [gui.Column([[gui.Button('Training Data',enable_events=True,key='-DATA-')]],
-        justification='center')]
+        [gui.Text("The results are not guaranteed to be accurate",justification='left')]
     ]
     window = gui.Window("About", layout, modal=True)
-    url = 'https://nijianmo.github.io/amazon/index.html'
     while True:
         event, values = window.read()
-        if event == '-DATA-':
-            webbrowser.open(url)
-        elif event == gui.WIN_CLOSED:
+        if event == gui.WIN_CLOSED:
             window.close()
             return None
 
@@ -73,15 +74,27 @@ def get_sentiment(link):
     video_id = get_video_id(link)
     if not video_id:
         return None
-    max_results = 100  # set max results per page (max is 100)
-    pages = 0
+    
+    # get title of video
+    url_title = f'https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={api_key}'
+    title_response = requests.get(url_title)
+    title_data = title_response.json()
+    video_title = title_data['items'][0]['snippet']['title']
 
     # initialize variables
     comments = []
     next_page_token = None
+    pages = 0
+    max_pages = 1
 
-    max_results = 100
+    max_results = 100 # set max results per page
     base_url = "https://www.googleapis.com/youtube/v3/commentThreads"
+
+    if torch.cuda.is_available():
+        print("CUDA")
+        max_pages = 5
+    else:
+        print("CPU")
 
     while True:
         # construct API request URL
@@ -106,13 +119,21 @@ def get_sentiment(link):
         else:
             break  # no more pages, exit loop
         pages += 1
-        if pages >= 5: # obtain max 500 comments for now
+        #print(pages) # check loop efficacy
+        if pages >= max_pages: # dependent on whether CUDA processing is available
             break
 
+    # print("Pulled comments")
 
     # load model and tokenizer
     model = BertForSequenceClassification.from_pretrained('sentiment_model')
     tokenizer = BertTokenizer.from_pretrained('sentiment_model')
+    
+    # check if CUDA is available and move the model to GPU
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    # print("Initialized and moved model")
 
     # tokenize all comments
     inputs = tokenizer.batch_encode_plus(
@@ -122,11 +143,17 @@ def get_sentiment(link):
        truncation=True       # truncate comments longer than the maximum length
     )
 
+    inputs = {key: value.to(device) for key, value in inputs.items()}
+
     # forward pass and prediction
     with torch.no_grad():
         outputs = model(**inputs)
     logits = outputs.logits
-    predicted_classes = logits.argmax(dim=1).tolist()
+    
+    # move logits back to CPU and get predicted classes
+    predicted_classes = logits.argmax(dim=1).cpu().tolist()
+
+    # print('Made predictions')
 
     # map predicted class to sentiment label
     sentiment_labels = ["Very Negative", "Negative", "Neutral", "Positive", "Very Positive"]
@@ -142,9 +169,10 @@ def get_sentiment(link):
     sentiment_percentage = []
     for i in sentiment_tally:
         sentiment_percentage.append(i*100/sentiment_count)
-    #print(f"Sentiment Percentages: {sentiment_percentage}")
+    # print(f"Sentiment Percentages: {sentiment_percentage}")
     
     bar_layout = [
+        [gui.Text(f"\"{video_title}\" Comment Analysis",justification='center',font=("Open Sans", 10))],
         [gui.Graph(canvas_size=(500, 400), graph_bottom_left=(0, 0), graph_top_right=(500, 400), key='-GRAPH-')],
         [gui.Button('Close',key='-CLOSE-SENTIMENTS-')]
     ]
@@ -166,7 +194,7 @@ def get_sentiment(link):
 layout_top = [  [gui.Text("YouTube Sentiment Analysis",font=("Open Sans",14))]]
             
 layout_middle = [gui.Text("Link:"),
-                 gui.Input(default_text="https://www.youtube.com/watch?v=YbJOTdZBX1g",size=(100,12),tooltip="Your link goes here.",border_width=5,focus=True,key='-LINK-')
+                 gui.Input(default_text="https://www.youtube.com/watch?v=jNQXAC9IVRw",size=(100,12),tooltip="Your link goes here.",border_width=5,focus=True,key='-LINK-')
 ]
 
 layout_bottom = [gui.Column([[gui.Button('Go!',key='-GO-',button_color="Green")]]),
