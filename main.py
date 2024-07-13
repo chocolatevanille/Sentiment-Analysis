@@ -20,9 +20,9 @@ gui.theme("DarkBlue")
 # it's me!
 def display_credits():
     layout = [
-        [gui.Text("Made by Noël Barron",justification='center',font=("Open Sans"))],
-        [gui.Text("AI model trained on Amazon Review Data (2018)",justification='left',font=("Open Sans"))],
-        [gui.Text("Ni, J., Li, J., & McAuley, J. (n.d.). Justifying recommendations using distantly-labeled reviews and fined-grained aspects. Empirical Methods in Natural Language Processing (EMNLP), 2019",justification='left',font=("Open Sans"))],
+        [gui.Text("Made by Noël Barron",justification='center')],
+        [gui.Text("AI model trained on Amazon Review Data (2018)",justification='left')],
+        [gui.Text("Ni, J., Li, J., & McAuley, J. (n.d.). Justifying recommendations using distantly-labeled reviews and fined-grained aspects. Empirical Methods in Natural Language Processing (EMNLP), 2019",justification='left')],
         [gui.Column([[gui.Button('GitHub',enable_events=True,key='-GITHUB-')]],
         justification='center')]
     ]
