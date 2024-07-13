@@ -1,5 +1,5 @@
 # PyTorch image with CUDA support
-FROM pytorch/pytorch:2.3.1-cuda10.2-cudnn7-runtime
+FROM pytorch/pytorch:2.3.1-cuda11.8-cudnn8-runtime
 
 WORKDIR /app
 

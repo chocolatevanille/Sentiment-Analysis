@@ -15,7 +15,7 @@ api_key = os.getenv('API_KEY')
 
 gui.theme("DarkBlue")
 
-# None -> None
+# display_credits: None -> None
 # called when the Credits button is pressed
 # it's me!
 def display_credits():
@@ -35,7 +35,9 @@ def display_credits():
         elif event == gui.WIN_CLOSED:
             window.close()
             return None
-        
+
+# display_about: None -> None
+# called when the About button is pressed
 def display_about():
     layout = [
         [gui.Text("AI Information",justification='center',font=("Open Sans", 14))],
@@ -71,10 +73,10 @@ def get_sentiment(link):
     video_id = get_video_id(link)
     if not video_id:
         return None
-    max_results = 100  # Set max results per page (max is 100)
+    max_results = 100  # set max results per page (max is 100)
     pages = 0
 
-    # Initialize variables
+    # initialize variables
     comments = []
     next_page_token = None
 
@@ -107,19 +109,10 @@ def get_sentiment(link):
         if pages >= 5: # obtain max 500 comments for now
             break
 
-    #print(f"Number of comments: {len(comments)}")
-
 
     # load model and tokenizer
     model = BertForSequenceClassification.from_pretrained('sentiment_model')
     tokenizer = BertTokenizer.from_pretrained('sentiment_model')
-
-    # testing with one comment
-    # comment = comments[0]
-    # print(comment)
-
-    # tokenize single comment
-    # inputs = tokenizer(comment, return_tensors='pt')
 
     # tokenize all comments
     inputs = tokenizer.batch_encode_plus(

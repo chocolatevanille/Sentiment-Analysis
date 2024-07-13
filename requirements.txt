@@ -5,11 +5,8 @@ pandas
 numpy
 scikit-learn
 nltk
-Pillow
-librosa
-Flask
 python-dotenv
-nltk
 tensorflow
 keras
+PySimpleGUI
 # re # uncomment if your python version does not have re built-in
