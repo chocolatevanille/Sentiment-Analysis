@@ -160,8 +160,13 @@ def validate():
     print(f"Validation Accuracy: {acc}")
 
 for epoch in range(epochs):
+    print("Starting training")
+    print("Training loss can be understood as the error or discrepancy between the predicted output of the model and the actual target values in the training dataset.")
+    print("Validation accuracy measures the percentage of predictions that matched the correct values of the validation set.")
     print(f"Epoch {epoch+1}/{epochs}")
     train()
     validate()
 
-# this is taking forever to run... maybe decrease from 5000 reviews for training down to something more reasonable but less accurate
+# Save the model
+model.save_pretrained('sentiment_model')
+tokenizer.save_pretrained('sentiment_model')

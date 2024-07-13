@@ -1,3 +1,4 @@
 # Ignore the .env file
 .env
 main-checkpoint*
+model.safetensors
