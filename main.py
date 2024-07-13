@@ -1,172 +1,207 @@
-import torch
-import torch.nn as nn # neural network module
-import torch.optim as optim # optimizer module
-from torch.utils.data import DataLoader, Dataset, TensorDataset, RandomSampler, SequentialSampler # utilities
-import torchvision.transforms as transforms # torchvision (computer vision)
-import torchaudio # torchaudio (audio processing)
-from transformers import BertTokenizer, BertForSequenceClassification, get_linear_schedule_with_warmup, AdamW
-import requests
+import PySimpleGUI as gui
+import webbrowser
+import re
 from dotenv import load_dotenv
 import os
-import re 
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize as tokenize
-import pandas as pd
-from sklearn.model_selection import train_test_split 
-from sklearn.metrics import accuracy_score
-import numpy as np
-from keras.preprocessing.sequence import pad_sequences
-
-# STEP 0: SET UP ENVIRONMENT
+import requests
+from transformers import BertForSequenceClassification, BertTokenizer
+import torch
 
 # load environment variables from the .env file
-#load_dotenv()
+load_dotenv()
 
 # access the environment variables
-#api_key = os.getenv('API_KEY')
+api_key = os.getenv('API_KEY')
 
-# STEP 1: IMPORT AND PREPROCESS DATA
+gui.theme("DarkBlue")
 
-#training data
-train_df_unfiltered = pd.read_json('Movies_and_TV.json', lines=True)
-train_df = train_df_unfiltered.loc[:, ["overall", "reviewText"]]
-#print(train_df.head())
+# None -> None
+# called when the Credits button is pressed
+# it's me!
+def display_credits():
+    layout = [
+        [gui.Text("Made by Noël Barron",justification='center')],
+        [gui.Column([[gui.Button('GitHub',enable_events=True,key='-GITHUB-')]],
+        justification='center')]
+    ]
+    window = gui.Window("Credits", layout, modal=True)
+    url = 'https://github.com/chocolatevanille/PantheonofHallownestTracker'
+    while True:
+        event, values = window.read()
+        if event == '-GITHUB-':
+            webbrowser.open(url)
+        elif event == gui.WIN_CLOSED:
+            window.close()
+            return None
 
-# preprocessing functions
-# cleans up text in reviews
-# str -> str
-def preprocess_text(text):
-    text = str(text)
-    text = re.sub(r'http\S+', '', text) # remove URLs
-    text = re.sub(r'[^a-zA-Z\s]', '', text, re.I|re.A) # remove numbers and special characters
-    text = text.lower()
-    tokens = tokenize(text)
-    stop_words = set(stopwords.words('english')) # get and remove stopwords
-    tokens = [word for word in tokens if word not in stop_words]
-    return ' '.join(tokens)
+# get_video_id: str -> str or bool
+# obtains the video id from a YT link
+def get_video_id(link):
+    pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
+    match = re.search(pattern, link)
+    if match:
+        return match.group(1)
+    else:
+        return False
 
-def shift_score(score):
-    return (int(score) - 1)
+# get_sentiment: str -> None
+# called when the user inputs a link
+def get_sentiment(link):
+    #first, clean YouTube link
+    video_id = get_video_id(link)
+    if not video_id:
+        return None
+    max_results = 100  # Set max results per page (max is 100)
+    pages = 0
+
+    # Initialize variables
+    comments = []
+    next_page_token = None
+
+    max_results = 100
+    base_url = "https://www.googleapis.com/youtube/v3/commentThreads"
+
+    while True:
+        # Construct API request URL
+        comments_url = f"{base_url}?part=snippet&videoId={video_id}&key={api_key}&maxResults={max_results}&pageToken={next_page_token if next_page_token is not None else ''}"
+
+        # Make API request
+        comments_response = requests.get(comments_url)
+        comments_data = comments_response.json()
+
+        # Extract comments from the response
+        for item in comments_data["items"]:
+            comment_text = item["snippet"]["topLevelComment"]["snippet"]["textOriginal"]
+            comment_text = str(comment_text)
+            comment_text = re.sub(r'http\S+', '', comment_text) # remove URLs
+            comment_text = re.sub(r'[^a-zA-Z\s]', '', comment_text, re.I|re.A) # remove numbers and special characters
+            comment_text = comment_text.lower()
+            comments.append(comment_text)
+
+        # Check if there are more pages to fetch
+        if 'nextPageToken' in comments_data:
+            next_page_token = comments_data['nextPageToken']
+        else:
+            break  # No more pages, exit loop
+        pages += 1
+        if pages >= 30:
+            break
+
+    print(f"Number of comments: {len(comments)}")
+
+
+    # load model and tokenizer
+    model = BertForSequenceClassification.from_pretrained('sentiment_model')
+    tokenizer = BertTokenizer.from_pretrained('sentiment_model')
+
+    # testing with one comment
+    # comment = comments[0]
+    # print(comment)
+
+    # tokenize single comment
+    # inputs = tokenizer(comment, return_tensors='pt')
+
+    # tokenize all comments
+    # Tokenize input texts
+    inputs = tokenizer.batch_encode_plus(
+       comments,
+       return_tensors='pt',  # return PyTorch tensors
+       padding=True,         # pad to the maximum length in the batch
+       truncation=True       # truncate comments longer than the maximum length
+    )
+
+    # Forward pass and prediction
+    with torch.no_grad():
+        outputs = model(**inputs)
+    logits = outputs.logits
+    predicted_classes = logits.argmax(dim=1).tolist()
+
+    # Map predicted class to sentiment label
+    sentiment_labels = ["Very Negative", "Negative", "Neutral", "Positive", "Very Positive"]
+    predicted_sentiments = [sentiment_labels[pred] for pred in predicted_classes]
+
+    sentiment_tally = [0,0,0,0,0]
+    for sentiment in predicted_sentiments:
+        ind = sentiment_labels.index(sentiment)
+        sentiment_tally[ind] = sentiment_tally[ind] + 1
+
+    # get total number of sentiments
+    # there is a faster way to do this (number of reviews), implement later
+    sentiment_count = 0
+    for i in sentiment_tally:
+        sentiment_count += i
+    print(f"Total number of reviews: {sentiment_count}")
     
-train_df['reviewText'] = train_df['reviewText'].apply(preprocess_text)
-train_df['overall'] = train_df['overall'].apply(shift_score) # need range 0-4, not 1-5
-#print(train_df.head())
-
-# STEP 2: TOKENIZE DATA FOR BERT
-
-# initialize the Bert tokenizer
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-
-# tokenize the text
-max_len = 512
-# tokenizer on every reviewText, special tokens to indicate CLS, SEP, etc. for bert
-train_df['input_ids'] = train_df['reviewText'].apply(lambda x: tokenizer.encode(x, add_special_tokens=True, max_length=512, truncation=True)) 
-# post truncates sequences longer than and pads sequences shorter than max_len from the end 
-input_ids_padded = pad_sequences(train_df['input_ids'].tolist(), maxlen=max_len, dtype="long", truncating="post", padding="post")
-train_df['input_ids'] = input_ids_padded.tolist()
-train_df['attention_masks'] = train_df['input_ids'].apply(lambda seq: [float(i > 0) for i in seq]) # set padding tokens to 0
-#print(train_df[['overall', 'input_ids', 'attention_masks']].head())
-
-# convert lists to PyTorch-specific tensors
-input_ids = torch.tensor(train_df['input_ids'].values.tolist())
-attention_masks = torch.tensor(train_df['attention_masks'].values.tolist())
-labels = torch.tensor(train_df['overall'].values)
-
-# create the DataLoader for training and validation sets
-batch_size = 16
-
-dataset = TensorDataset(input_ids, attention_masks, labels) # convert to fancy TensorDataset (exciting!!)
-train_size = int(0.8 * len(dataset)) # change this to make more or less of set for training/validation
-val_size = len(dataset) - train_size
-
-# make the train and validation datasets
-train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-
-# prepare dataloaders for training and validation
-train_dataloader = DataLoader(train_dataset, sampler=RandomSampler(train_dataset), batch_size=batch_size)
-val_dataloader = DataLoader(val_dataset, sampler=SequentialSampler(val_dataset), batch_size=batch_size)
-
-# STEP 3: INITIALIZE MODEL (BERT)
-
-model = BertForSequenceClassification.from_pretrained(
-    'bert-base-uncased',
-    num_labels=5,  # number of unique sentiment classes
-    output_attentions=False,
-    output_hidden_states=False
-)
-
-# move model to GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
-
-# STEP 4: TRAIN THE MODEL
-
-learning_rate = 2e-5
-epsilon = 1e-8
-
-# optimize parameters
-optimizer = AdamW(model.parameters(), lr=learning_rate, eps=epsilon)
-
-epochs = 4 # number of passes through the entire training dataset
-total_steps = len(train_dataloader) * epochs
-
-# scheduler initialization
-scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
-
-# training function
-# NULL -> NULL
-def train():
-    model.train() # training mode (enables gradients and dropout)
-    total_loss = 0
-
-    for step, batch in enumerate(train_dataloader):
-        batch_input_ids, batch_attention_mask, batch_labels = tuple(t.to(device) for t in batch)
-        
-        model.zero_grad() # clears gradient from previous batch
-        
-        outputs = model(batch_input_ids, attention_mask=batch_attention_mask, labels=batch_labels) # forward pass through model
-        loss = outputs.loss
-        total_loss += loss.item() # compute total loss
-        
-        loss.backward() # backwards propagation
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # clips gradient to prevent exploding
-        
-        optimizer.step()
-        scheduler.step()
+    sentiment_percentage = []
+    for i in sentiment_tally:
+        sentiment_percentage.append(i*100/sentiment_count)
+    print(f"Sentiment Percentages: {sentiment_percentage}")
     
-    avg_train_loss = total_loss / len(train_dataloader)
-    print(f"Training loss: {avg_train_loss}")
+    bar_layout = [
+        [gui.Graph(canvas_size=(500, 400), graph_bottom_left=(0, 0), graph_top_right=(500, 400), key='-GRAPH-')],
+        [gui.Button('Close',key='-CLOSE-SENTIMENTS-')]
+    ]
+    sentiments_window = gui.Window('Sentiment Analysis', bar_layout, finalize=True)
+    graph = sentiments_window['-GRAPH-']
 
-# validating function
-# NULL -> NULL
-def validate():
-    model.eval() #evaluation mode (disables gradients and dropout)
-    preds, true_labels = [], []
-    
-    for batch in val_dataloader:
-        batch_input_ids, batch_attention_mask, batch_labels = tuple(t.to(device) for t in batch)
+    for i, value in enumerate(sentiment_percentage):
+        graph.draw_rectangle(top_left=(i*75 + 75, value * 3.5 + 50),bottom_right=(i*75 + 125, 50),fill_color='Purple')
 
-        # without computing gradients, perform forward pass
-        with torch.no_grad():
-            outputs = model(batch_input_ids, attention_mask=batch_attention_mask)
+    #bar_width = 50
+    #padding = 20
+    #for i, (sentiment, value) in enumerate(zip(sentiment_labels, sentiment_tally)):
+    #    graph.draw_rectangle(top_left=(i * (bar_width + padding) + padding, 300 - value * 5),
+    #                        bottom_right=((i + 1) * bar_width + i * padding, 300),
+    #                        fill_color='blue')
+    #    graph.draw_text(sentiment, (i * (bar_width + padding) + padding + 10, 280), color='black')
+    while True:
+        event, values = sentiments_window.read()
+        if event == gui.WINDOW_CLOSED or event == '-CLOSE-SENTIMENTS-':
+            break
+    sentiments_window.close()
 
-        # get model predictions and true labels
-        logits = outputs.logits
-        preds.extend(torch.argmax(logits, dim=1).cpu().numpy()) 
-        true_labels.extend(batch_labels.cpu().numpy())
-    
-    acc = accuracy_score(true_labels, preds)
-    print(f"Validation Accuracy: {acc}")
+# designing the main window layout
+layout_top = [  [gui.Text("YouTube Sentiment Analysis")]]
+            
+layout_middle = [gui.Text("Link:"),
+                 gui.Input(default_text="https://www.youtube.com/watch?v=YbJOTdZBX1g",size=(100,12),tooltip="Your link goes here.",border_width=5,focus=True,key='-LINK-')
+]
 
-for epoch in range(epochs):
-    print("Starting training")
-    print("Training loss can be understood as the error or discrepancy between the predicted output of the model and the actual target values in the training dataset.")
-    print("Validation accuracy measures the percentage of predictions that matched the correct values of the validation set.")
-    print(f"Epoch {epoch+1}/{epochs}")
-    train()
-    validate()
+layout_bottom = [gui.Column([[gui.Button('Go!',key='-GO-',button_color="Green")]]),
+                 gui.Column([[gui.Button('Credits',key='-CREDITS-')]]),
+                 gui.Column([[gui.Button('Close',key='-CLOSE-')]])
+]
 
-# Save the model
-model.save_pretrained('sentiment_model')
-tokenizer.save_pretrained('sentiment_model')
+layout = [
+    [   
+        layout_top,
+        layout_middle,
+        layout_bottom
+    ]
+]
+
+# main window creation
+window = gui.Window('YT Sentiment Analysis', layout,size=(750,540),element_justification='center',resizable=True,return_keyboard_events=True)
+
+# event loop
+def win_run():
+    while True:
+        event, values = window.read()
+        if event == gui.WIN_CLOSED or event == '-CLOSE-': # when window closes
+            break
+        elif event == '-GO-' or event == '\r':
+            link = values['-LINK-']
+            get_sentiment(link)
+        elif event == '-CREDITS-': # when the user wants to see who made the program
+            display_credits() # hey it's me! wait didn't i already do that jo-
+            continue
+    window.close()
+
+
+def main():
+    print()
+    win_run()
+
+
+if __name__ == "__main__":
+    main()
