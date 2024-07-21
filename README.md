@@ -2,6 +2,9 @@
 
 Ever since YouTube hid the Dislike feature from viewers, users have tried other ways to assess the general sentiment of the community when opening videos. This program will provide an alternative by displaying the percentage of comments that are very negative, negative, neutral, positive, and very positive. 
 
+### Demo
+[![Watch the video](https://img.youtube.com/vi/dWxQVdx-zdM/maxresdefault.jpg)](https://youtu.be/dWxQVdx-zdM)
+
 ### Easy and Simple To Use
 
 Just paste your YouTube URL into the textbox and press Go!
