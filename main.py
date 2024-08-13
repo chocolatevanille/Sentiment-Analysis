@@ -74,7 +74,7 @@ def get_sentiment(link):
     video_id = get_video_id(link)
     if not video_id:
         return None
-    
+
     # get title of video
     url_title = f'https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={api_key}'
     title_response = requests.get(url_title)
@@ -87,7 +87,7 @@ def get_sentiment(link):
     pages = 0
     max_pages = 1
 
-    max_results = 100 # set max results per page
+    max_results = 100  # set max results per page
     base_url = "https://www.googleapis.com/youtube/v3/commentThreads"
 
     if torch.cuda.is_available():
@@ -108,8 +108,8 @@ def get_sentiment(link):
         for item in comments_data["items"]:
             comment_text = item["snippet"]["topLevelComment"]["snippet"]["textOriginal"]
             comment_text = str(comment_text)
-            comment_text = re.sub(r'http\S+', '', comment_text) # remove URLs
-            comment_text = re.sub(r'[^a-zA-Z\s]', '', comment_text, re.I|re.A) # remove numbers and special characters
+            comment_text = re.sub(r'http\S+', '', comment_text)  # remove URLs
+            comment_text = re.sub(r'[^a-zA-Z\s]', '', comment_text, re.I | re.A)  # remove numbers and special characters
             comment_text = comment_text.lower()
             comments.append(comment_text)
 
@@ -119,50 +119,50 @@ def get_sentiment(link):
         else:
             break  # no more pages, exit loop
         pages += 1
-        #print(pages) # check loop efficacy
-        if pages >= max_pages: # dependent on whether CUDA processing is available
+        if pages >= max_pages:  # dependent on whether CUDA processing is available
             break
-
-    # print("Pulled comments")
 
     # load model and tokenizer
     model = BertForSequenceClassification.from_pretrained('sentiment_model')
     tokenizer = BertTokenizer.from_pretrained('sentiment_model')
-    
+
     # check if CUDA is available and move the model to GPU
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # print("Initialized and moved model")
-
-    # tokenize all comments
-    inputs = tokenizer.batch_encode_plus(
-       comments,
-       return_tensors='pt',  # return PyTorch tensors
-       padding=True,         # pad to the maximum length in the batch
-       truncation=True       # truncate comments longer than the maximum length
-    )
-
-    inputs = {key: value.to(device) for key, value in inputs.items()}
-
-    # forward pass and prediction
-    with torch.no_grad():
-        outputs = model(**inputs)
-    logits = outputs.logits
-    
-    # move logits back to CPU and get predicted classes
-    predicted_classes = logits.argmax(dim=1).cpu().tolist()
-
-    # print('Made predictions')
-
-    # map predicted class to sentiment label
+    # split comments into batches of 50 to avoid overloading GPU memory
+    batch_size = 50
+    sentiment_tally = [0, 0, 0, 0, 0]
     sentiment_labels = ["Very Negative", "Negative", "Neutral", "Positive", "Very Positive"]
-    predicted_sentiments = [sentiment_labels[pred] for pred in predicted_classes]
 
-    sentiment_tally = [0,0,0,0,0]
-    for sentiment in predicted_sentiments:
-        ind = sentiment_labels.index(sentiment)
-        sentiment_tally[ind] = sentiment_tally[ind] + 1
+    for i in range(0, len(comments), batch_size):
+        batch_comments = comments[i:i + batch_size]
+
+        # tokenize batch
+        inputs = tokenizer.batch_encode_plus(
+            batch_comments,
+            return_tensors='pt',
+            padding=True,
+            truncation=True
+        )
+
+        inputs = {key: value.to(device) for key, value in inputs.items()}
+
+        # forward pass and prediction
+        with torch.no_grad():
+            outputs = model(**inputs)
+        logits = outputs.logits
+
+        # move logits back to CPU and get predicted classes
+        predicted_classes = logits.argmax(dim=1).cpu().tolist()
+
+        # map predicted class to sentiment label
+        predicted_sentiments = [sentiment_labels[pred] for pred in predicted_classes]
+
+        for sentiment in predicted_sentiments:
+            ind = sentiment_labels.index(sentiment)
+            sentiment_tally[ind] += 1
+
 
     sentiment_count = len(comments)
     

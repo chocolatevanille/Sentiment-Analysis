@@ -22,7 +22,7 @@ from keras.preprocessing.sequence import pad_sequences
 # STEP 1: IMPORT AND PREPROCESS DATA
 
 #training data
-train_df_unfiltered = pd.read_json('Movies_and_TV.json', lines=True)
+train_df_unfiltered = pd.read_json('reviews_15k_per_rating.json', lines=True)
 train_df = train_df_unfiltered.loc[:, ["overall", "reviewText"]]
 #print(train_df.head())
 
